@@ -33,7 +33,11 @@ type THttpClientTransport struct {
 }
 
 func NewTHttpClientTransport(URL string) *THttpClientTransport {
-	return &THttpClientTransport{Client: http.DefaultClient, URL: URL, 
+	return NewTHttpClientTransportWithHttpClient(URL, http.DefaultClient)
+}
+
+func NewTHttpClientTransportWithHttpClient(URL string, Client *http.Client) *THttpClientTransport {
+	return &THttpClientTransport{Client: Client, URL: URL, 
 		RequestBuffer: bytes.NewBuffer(make([]byte, 0, DEFAULT_BUFFER_SIZE)),
 		ResponseBuffer: bytes.NewBuffer(make([]byte, 0, DEFAULT_BUFFER_SIZE)),
 	}
@@ -47,7 +51,6 @@ func (t *THttpClientTransport) Close() error {
 }
 
 func (t *THttpClientTransport) doHttpFlush() error {
-	fmt.Println("Doing flush")	
 	requestData, err := ioutil.ReadAll(t.RequestBuffer)
 	if err != nil {
 		return THttpClientTransportError{Err: err}
@@ -73,7 +76,6 @@ func (t *THttpClientTransport) doHttpFlush() error {
 	}
 
 	_, err = io.Copy(t.ResponseBuffer, resp.Body)
-	fmt.Println("Finished copying flush")	
 
 	if err != nil {
 		return THttpClientTransportError{Err: err}
@@ -83,17 +85,24 @@ func (t *THttpClientTransport) doHttpFlush() error {
 }
 
 func (t *THttpClientTransport) Write(p []byte) (n int, e error) {
-	fmt.Println("Doing write")	
+	if t.RequestBuffer == nil || t.ResponseBuffer == nil {
+		return 0, io.EOF
+	}
+
 	return t.RequestBuffer.Write(p)
 }
 
 func (t *THttpClientTransport) Read(p []byte) (n int, e error) {
-	fmt.Println("Doing read")	
+	if t.RequestBuffer == nil || t.ResponseBuffer == nil {
+		return 0, io.EOF
+	}
+
 	if len(t.RequestBuffer.Bytes()) > 0 {
 		e = t.doHttpFlush()
 		if e != nil {
 			return
 		}
 	}
+
 	return t.ResponseBuffer.Read(p)
 }
