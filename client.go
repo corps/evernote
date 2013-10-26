@@ -3,8 +3,8 @@ package evernote
 import (
 	"github.com/corps/evernote/edamnotestore"
 	"github.com/corps/evernote/edamuserstore"
-	"net/rpc"
 	"github.com/samuel/go-thrift/thrift"
+	"net/rpc"
 )
 
 type EvernoteUserStoreUrl string
@@ -14,14 +14,14 @@ const (
 )
 
 type EvernoteClient struct {
-	AccessToken			string
-	UserStoreUrl        string
-	NoteStoreUrl        string
+	AccessToken  string
+	UserStoreUrl string
+	NoteStoreUrl string
 }
 
 func NewEvernoteClient(userStoreUrl EvernoteUserStoreUrl, accessToken string) *EvernoteClient {
 	return &EvernoteClient{
-		AccessToken: accessToken, 
+		AccessToken:  accessToken,
 		UserStoreUrl: string(userStoreUrl),
 	}
 }

@@ -1,11 +1,11 @@
 package evernote
 
 import (
-	"io"
 	"bytes"
-	"net/http"
 	"fmt"
+	"io"
 	"io/ioutil"
+	"net/http"
 )
 
 const (
@@ -13,8 +13,8 @@ const (
 )
 
 type THttpClientTransportError struct {
-	Message			string
-	Err   			error
+	Message string
+	Err     error
 }
 
 func (e THttpClientTransportError) Error() string {
@@ -27,9 +27,10 @@ func (e THttpClientTransportError) Error() string {
 
 type THttpClientTransport struct {
 	Client         *http.Client
-	URL 			string
-	RequestBuffer  *bytes.Buffer	
-	ResponseBuffer *bytes.Buffer
+	URL            string
+	requestBuffer  *bytes.Buffer
+	responseBuffer *bytes.Buffer
+	responses      chan *bytes.Buffer
 }
 
 func NewTHttpClientTransport(URL string) *THttpClientTransport {
@@ -37,21 +38,22 @@ func NewTHttpClientTransport(URL string) *THttpClientTransport {
 }
 
 func NewTHttpClientTransportWithHttpClient(URL string, Client *http.Client) *THttpClientTransport {
-	return &THttpClientTransport{Client: Client, URL: URL, 
-		RequestBuffer: bytes.NewBuffer(make([]byte, 0, DEFAULT_BUFFER_SIZE)),
-		ResponseBuffer: bytes.NewBuffer(make([]byte, 0, DEFAULT_BUFFER_SIZE)),
+	return &THttpClientTransport{Client: Client, URL: URL,
+		requestBuffer:  bytes.NewBuffer(make([]byte, 0, DEFAULT_BUFFER_SIZE)),
+		responseBuffer: nil,
+		responses:      make(chan *bytes.Buffer),
 	}
 }
 
 func (t *THttpClientTransport) Close() error {
 	t.Client = nil
-	t.RequestBuffer = nil
-	t.ResponseBuffer = nil
+	t.requestBuffer = nil
+	t.responseBuffer = nil
 	return nil
 }
 
-func (t *THttpClientTransport) doHttpFlush() error {
-	requestData, err := ioutil.ReadAll(t.RequestBuffer)
+func (t *THttpClientTransport) Flush() error {
+	requestData, err := ioutil.ReadAll(t.requestBuffer)
 	if err != nil {
 		return THttpClientTransportError{Err: err}
 	}
@@ -75,7 +77,9 @@ func (t *THttpClientTransport) doHttpFlush() error {
 		return THttpClientTransportError{Message: fmt.Sprintf("Unexpected status code: %s", resp.StatusCode)}
 	}
 
-	_, err = io.Copy(t.ResponseBuffer, resp.Body)
+	responseBuffer := bytes.NewBuffer(make([]byte, 0, DEFAULT_BUFFER_SIZE))
+	_, err = io.Copy(responseBuffer, resp.Body)
+	go func() { t.responses <- responseBuffer }()
 
 	if err != nil {
 		return THttpClientTransportError{Err: err}
@@ -85,24 +89,21 @@ func (t *THttpClientTransport) doHttpFlush() error {
 }
 
 func (t *THttpClientTransport) Write(p []byte) (n int, e error) {
-	if t.RequestBuffer == nil || t.ResponseBuffer == nil {
+	if t.requestBuffer == nil {
 		return 0, io.EOF
 	}
 
-	return t.RequestBuffer.Write(p)
+	return t.requestBuffer.Write(p)
 }
 
 func (t *THttpClientTransport) Read(p []byte) (n int, e error) {
-	if t.RequestBuffer == nil || t.ResponseBuffer == nil {
+	if t.requestBuffer == nil {
 		return 0, io.EOF
 	}
 
-	if len(t.RequestBuffer.Bytes()) > 0 {
-		e = t.doHttpFlush()
-		if e != nil {
-			return
-		}
+	if t.responseBuffer == nil || t.responseBuffer.Len() == 0 {
+		t.responseBuffer = <-t.responses
 	}
 
-	return t.ResponseBuffer.Read(p)
+	return t.responseBuffer.Read(p)
 }
